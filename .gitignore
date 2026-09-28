@@ -1,0 +1,11 @@
+node_modules/
+login.json
+ChromeData_Katabump/
+.env
+.env.*
+*.log
+.DS_Store
+photo/
+screenshots/
+playwright-report/
+test-results/

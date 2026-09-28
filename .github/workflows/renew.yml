@@ -1,0 +1,84 @@
+name: Katabump Auto Renew
+
+on:
+  schedule:
+    - cron: '10 21 * * *'
+  workflow_dispatch:
+    inputs:
+      notify:
+        description: 发送 Telegram 图文报告
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: katabump-renew
+  cancel-in-progress: false
+
+jobs:
+  update-activity:
+    name: 更新时间
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - name: 写入时间
+        continue-on-error: true
+        env:
+          ACTIVITY_BRANCH: ${{ github.event.repository.default_branch }}
+          ACTIVITY_OWNER_ID: ${{ github.repository_owner_id }}
+        run: bash scripts/update-activity.sh
+
+  renew:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        id: node
+        continue-on-error: true
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: 安装依赖
+        id: dependencies
+        continue-on-error: true
+        run: |
+          sudo apt-get update -qq > /dev/null 2>&1
+          sudo apt-get install -y xvfb fonts-noto-cjk > /dev/null 2>&1
+          npm ci --no-audit --no-fund > /dev/null 2>&1
+          npx playwright install --with-deps chromium > /dev/null 2>&1
+
+      - name: 检查代码
+        id: checks
+        if: steps.dependencies.outcome == 'success'
+        continue-on-error: true
+        run: npm run check && npm test
+
+      - name: 执行续期并发送私密报告
+        if: always() && !cancelled()
+        continue-on-error: true
+        env:
+          USERS_JSON: ${{ secrets.USERS_JSON }}
+          HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          SEND_TG: ${{ github.event_name != 'workflow_dispatch' || inputs.notify }}
+          SETUP_FAILED: ${{ steps.node.outcome == 'failure' || steps.dependencies.outcome == 'failure' || steps.checks.outcome == 'failure' }}
+        run: |
+          if [ "$SETUP_FAILED" = true ]; then
+            node renew.js > /dev/null 2>&1
+          else
+            xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" node renew.js > /dev/null 2>&1
+          fi
+          if [ -f "$GITHUB_STEP_SUMMARY" ]; then
+            cat "$GITHUB_STEP_SUMMARY"
+          fi
