@@ -3,6 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
 const { loadUsers, proxyConfig, RenewalError } = require('../lib/config');
 const { renewalStatus, serverLinks, expiryTimestamp, readExpiry } = require('../lib/browser');
 const { Notifier, report } = require('../lib/notify');
@@ -123,7 +125,7 @@ test('per-server failure reports reason and continues, profile is removed', asyn
   const reports = [];
   let profile, closed = false, count = 0;
   const page = {};
-  await processAccount(validUser, undefined, {}, {
+  const outcomes = await processAccount(validUser, undefined, {}, {
     launchBrowser: async directory => { profile = directory; return { pages: () => [page], close: async () => { closed = true; } }; },
     flow: { login: async () => {}, getServers: async () => ['one', 'two'], renewServer: async () => {
       if (++count === 1) throw new RenewalError('续期：验证码超时');
@@ -131,6 +133,7 @@ test('per-server failure reports reason and continues, profile is removed', asyn
     } }, sendReport: async (_, result) => reports.push(result),
   });
   assert.equal(reports.length, 2);
+  assert.deepEqual(outcomes, ['failure', 'success']);
   assert.match(reports[0].reason, /验证码超时/);
   assert.equal(reports[1].status, 'success');
   assert.equal(closed, true);
@@ -164,6 +167,21 @@ test('setup failure reports without requiring browser packages', async () => env
   assert.equal(await main({ notifier }), 0);
   assert.match(caption, /依赖或浏览器安装失败/);
 }));
+
+test('the Actions summary counts outcomes without disclosing account credentials', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'katabump-summary-'));
+  const summaryPath = path.join(directory, 'summary.md');
+  try {
+    await env({ GITHUB_STEP_SUMMARY: summaryPath, USERS_JSON: JSON.stringify([validUser]) }, async () => {
+      await main({ notifier: { delivered: 0, attempted: 0, photos: 0 },
+        processUser: async () => ['success', 'skipped', 'failure', 'uncertain'] });
+    });
+    const summary = await fs.readFile(summaryPath, 'utf8');
+    assert.match(summary, /续期成功 1，暂无需续期 1，失败 1，待确认 1/);
+    assert.ok(!summary.includes(validUser.username));
+    assert.ok(!summary.includes(validUser.password));
+  } finally { await fs.rm(directory, { recursive: true, force: true }); }
+});
 
 test('negative renewal wording is never classified as success', () => {
   assert.equal(renewalStatus('Server has not been successfully renewed').status, 'failure');
