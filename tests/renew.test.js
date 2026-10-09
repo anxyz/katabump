@@ -133,7 +133,7 @@ test('per-server failure reports reason and continues, profile is removed', asyn
     } }, sendReport: async (_, result) => reports.push(result),
   });
   assert.equal(reports.length, 2);
-  assert.deepEqual(outcomes, ['failure', 'success']);
+  assert.deepEqual(outcomes, [{ status: 'failure', stage: '续期' }, { status: 'success', stage: '续期' }]);
   assert.match(reports[0].reason, /验证码超时/);
   assert.equal(reports[1].status, 'success');
   assert.equal(closed, true);
@@ -174,10 +174,11 @@ test('the Actions summary counts outcomes without disclosing account credentials
   try {
     await env({ GITHUB_STEP_SUMMARY: summaryPath, USERS_JSON: JSON.stringify([validUser]) }, async () => {
       await main({ notifier: { delivered: 0, attempted: 0, photos: 0 },
-        processUser: async () => ['success', 'skipped', 'failure', 'uncertain'] });
+        processUser: async () => ['success', 'skipped', 'failure', 'uncertain'].map(status => ({ status, stage: '续期' })) });
     });
     const summary = await fs.readFile(summaryPath, 'utf8');
     assert.match(summary, /续期成功 1，暂无需续期 1，失败 1，待确认 1/);
+    assert.match(summary, /故障阶段：续期 1/);
     assert.ok(!summary.includes(validUser.username));
     assert.ok(!summary.includes(validUser.password));
   } finally { await fs.rm(directory, { recursive: true, force: true }); }
