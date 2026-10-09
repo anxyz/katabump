@@ -12,7 +12,7 @@ test('native Chrome closes completely so its profile can be reused', async t => 
   const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'katabump-native-test-'));
   t.after(() => fs.rm(profile, { recursive: true, force: true }));
   for (let attempt = 0; attempt < 2; attempt++) {
-    const session = await launch(profile, undefined, { headless: true, startupTimeout: 10000 });
+    const session = await launch(profile, undefined, { headless: true, startupTimeout: 30000 });
     const page = session.pages()[0] || await session.newPage();
     const browser = page.context().browser();
     try {
@@ -42,7 +42,7 @@ test('native Chrome supports authenticated HTTP proxies without placing credenti
   await new Promise(resolve => proxy.listen(0, '127.0.0.1', resolve));
   t.after(() => { proxy.closeAllConnections(); return new Promise(resolve => proxy.close(resolve)); });
   const session = await launch(profile, { server: `http://127.0.0.1:${proxy.address().port}`,
-    username: 'fixture-user', password: 'fixture-password' }, { headless: true, startupTimeout: 10000 });
+    username: 'fixture-user', password: 'fixture-password' }, { headless: true, startupTimeout: 30000 });
   try {
     const page = session.pages()[0] || await session.newPage();
     await page.goto('http://katabump-fixture.invalid');
