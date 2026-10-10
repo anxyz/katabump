@@ -9,10 +9,24 @@ const http = require('node:http');
 const { launch } = require('../lib/launch');
 
 test('native Chrome closes completely so its profile can be reused', async t => {
+  const previousBypass = { NO_PROXY: process.env.NO_PROXY, no_proxy: process.env.no_proxy };
+  t.after(() => {
+    for (const [key, value] of Object.entries(previousBypass)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+  process.env.NO_PROXY = 'upper-proxy-bypass.invalid';
+  process.env.no_proxy = 'lower-proxy-bypass.invalid';
   const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'katabump-native-test-'));
   t.after(() => fs.rm(profile, { recursive: true, force: true }));
   for (let attempt = 0; attempt < 2; attempt++) {
     const session = await launch(profile, undefined, { headless: true, startupTimeout: 30000 });
+    for (const key of ['NO_PROXY', 'no_proxy']) {
+      assert.ok(process.env[key].split(',').includes('upper-proxy-bypass.invalid'));
+      assert.ok(process.env[key].split(',').includes('lower-proxy-bypass.invalid'));
+      assert.ok(process.env[key].split(',').includes('127.0.0.1'));
+    }
     const page = session.pages()[0] || await session.newPage();
     const browser = page.context().browser();
     try {

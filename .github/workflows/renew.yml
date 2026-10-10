@@ -53,7 +53,7 @@ jobs:
         continue-on-error: true
         run: |
           sudo apt-get update -qq > /dev/null 2>&1
-          sudo apt-get install -y xvfb fonts-noto-cjk > /dev/null 2>&1
+          sudo apt-get install -y xvfb xdotool fonts-noto-cjk > /dev/null 2>&1
           npm ci --no-audit --no-fund > /dev/null 2>&1
           npx playwright install --with-deps chromium > /dev/null 2>&1
 
@@ -61,7 +61,7 @@ jobs:
         id: checks
         if: steps.dependencies.outcome == 'success'
         continue-on-error: true
-        run: npm run check && npm test && npm run test:browser
+        run: npm run check && npm test && npm run test:browser && npm run test:gui
 
       - name: 执行续期并发送私密报告
         if: always() && !cancelled()
