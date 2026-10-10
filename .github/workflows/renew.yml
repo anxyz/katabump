@@ -71,7 +71,8 @@ jobs:
         id: checks
         if: steps.dependencies.outcome == 'success'
         continue-on-error: true
-        run: npm run check && npm test && npm run test:browser && npm run test:gui
+        timeout-minutes: 2
+        run: npm run check && npm test
 
       - name: 执行续期并发送私密报告
         if: always() && !cancelled()

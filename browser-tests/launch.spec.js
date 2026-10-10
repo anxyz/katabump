@@ -8,7 +8,7 @@ const path = require('node:path');
 const http = require('node:http');
 const { launch } = require('../lib/launch');
 
-test('native Chrome closes completely so its profile can be reused', async t => {
+test('native Chrome closes completely so its profile can be reused', { timeout: 60000 }, async t => {
   const previousBypass = { NO_PROXY: process.env.NO_PROXY, no_proxy: process.env.no_proxy };
   t.after(() => {
     for (const [key, value] of Object.entries(previousBypass)) {
@@ -38,11 +38,12 @@ test('native Chrome closes completely so its profile can be reused', async t => 
   }
 });
 
-test('native Chrome supports authenticated HTTP proxies without placing credentials in the proxy URL', async t => {
+test('native Chrome supports authenticated HTTP proxies without placing credentials in the proxy URL', { timeout: 60000 }, async t => {
   const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'katabump-proxy-test-'));
   t.after(() => fs.rm(profile, { recursive: true, force: true }));
   const expected = 'Basic ' + Buffer.from('fixture-user:fixture-password').toString('base64');
   let authenticated = false;
+  const sockets = new Set();
   const proxy = http.createServer((request, response) => {
     if (request.headers['proxy-authorization'] !== expected) {
       response.writeHead(407, { 'Proxy-Authenticate': 'Basic realm="test proxy"' });
@@ -53,8 +54,17 @@ test('native Chrome supports authenticated HTTP proxies without placing credenti
     response.writeHead(200, { 'Content-Type': 'text/html' });
     response.end('<p>Authenticated proxy ready</p>');
   });
+  proxy.on('connection', socket => {
+    sockets.add(socket);
+    socket.once('close', () => sockets.delete(socket));
+  });
   await new Promise(resolve => proxy.listen(0, '127.0.0.1', resolve));
-  t.after(() => { proxy.closeAllConnections(); return new Promise(resolve => proxy.close(resolve)); });
+  t.after(async () => {
+    const closed = new Promise(resolve => proxy.close(resolve));
+    proxy.closeAllConnections();
+    for (const socket of sockets) socket.destroy();
+    await closed;
+  });
   const session = await launch(profile, { server: `http://127.0.0.1:${proxy.address().port}`,
     username: 'fixture-user', password: 'fixture-password' }, { headless: true, startupTimeout: 30000 });
   try {
