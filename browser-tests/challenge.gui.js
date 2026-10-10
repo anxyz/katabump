@@ -10,7 +10,7 @@ const { solveChallenge } = require('../lib/challenge');
 
 test('GUI verification sends mouse events with the actual browser screen coordinates', async t => {
   const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'katabump-gui-test-'));
-  const session = await launch(profile, undefined, { headless: false, stealth: false, observeChallenge: false });
+  const session = await launch(profile, undefined, { headless: false });
   try {
     const page = session.pages()[0] || await session.newPage();
     await page.context().route('**/*', route => route.fulfill({ contentType: 'text/html', body:

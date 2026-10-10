@@ -17,10 +17,10 @@ async function main() {
   await fs.mkdir(directory, { recursive: true });
   try {
     session = await launch(profile, mode === 'warp' ? { server: 'socks5://127.0.0.1:40000' } : undefined, {
-      stealth: !mode.startsWith('native'), observeChallenge: mode !== 'native-dom',
+      stealth: mode === 'direct', observeChallenge: mode === 'direct' || mode === 'native',
     });
     page = session.pages()[0] || await session.newPage();
-    if (mode !== 'native-dom') await page.context().addInitScript(() => {
+    if (mode === 'direct' || mode === 'native') await page.context().addInitScript(() => {
       const roots = [];
       const original = Element.prototype.attachShadow;
       Element.prototype.attachShadow = function (init) {
@@ -64,7 +64,7 @@ async function main() {
     for (const frame of page.frames()) {
       const host = new URL(frame.url()).hostname;
       if (!host.endsWith('.cloudflare.com')) continue;
-      if (mode === 'native-dom') {
+      if (mode === 'native-dom' || mode === 'warp') {
         const client = await page.context().newCDPSession(frame);
         try {
           const { nodes } = await client.send('Accessibility.getFullAXTree');
