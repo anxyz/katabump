@@ -19,7 +19,7 @@ test('native Chrome closes completely so its profile can be reused', { timeout: 
   process.env.NO_PROXY = 'upper-proxy-bypass.invalid';
   process.env.no_proxy = 'lower-proxy-bypass.invalid';
   const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'katabump-native-test-'));
-  t.after(() => fs.rm(profile, { recursive: true, force: true }));
+  t.after(() => fs.rm(profile, { recursive: true, force: true, maxRetries: 3 }));
   for (let attempt = 0; attempt < 2; attempt++) {
     const session = await launch(profile, undefined, { headless: true, startupTimeout: 30000 });
     for (const key of ['NO_PROXY', 'no_proxy']) {
@@ -40,7 +40,7 @@ test('native Chrome closes completely so its profile can be reused', { timeout: 
 
 test('native Chrome supports authenticated HTTP proxies without placing credentials in the proxy URL', { timeout: 60000 }, async t => {
   const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'katabump-proxy-test-'));
-  t.after(() => fs.rm(profile, { recursive: true, force: true }));
+  t.after(() => fs.rm(profile, { recursive: true, force: true, maxRetries: 3 }));
   const expected = 'Basic ' + Buffer.from('fixture-user:fixture-password').toString('base64');
   let authenticated = false;
   const sockets = new Set();

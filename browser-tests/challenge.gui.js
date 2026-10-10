@@ -49,6 +49,6 @@ test('GUI verification sends mouse events with the actual browser screen coordin
     t.diagnostic(`screenY: GUI=${pointer.screenY}, expected=${expected.y}`);
   } finally {
     await session.close();
-    await fs.rm(profile, { recursive: true, force: true });
+    await fs.rm(profile, { recursive: true, force: true, maxRetries: 3 });
   }
 });
