@@ -4,7 +4,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { existsSync } = require('node:fs');
 const { chromium } = require('playwright');
-const { challengeObserver, challengeState, solveChallenge, clickChallenge } = require('../lib/challenge');
+const { challengeObserver, challengeState, solveChallenge, clickChallenge, enableAccessibilityLookup } = require('../lib/challenge');
 const { login, renewServer } = require('../lib/browser');
 
 const ORIGIN = 'https://dashboard.katabump.com';
@@ -19,10 +19,11 @@ before(async () => {
 });
 after(async () => { await browser?.close(); });
 
-async function fixture(t, handler) {
+async function fixture(t, handler, { observe = true } = {}) {
   const context = await browser.newContext();
   t.after(() => context.close());
-  await context.addInitScript(challengeObserver);
+  if (observe) await context.addInitScript(challengeObserver);
+  else enableAccessibilityLookup(context);
   await context.route('**/*', async route => {
     const body = await handler(new URL(route.request().url()), route.request());
     await route.fulfill({ status: 200, contentType: 'text/html', body: body || '<html></html>' });
@@ -74,6 +75,22 @@ test('a hidden stale widget does not block a solved login form', async t => {
   const page = await fixture(t, () => widget({ token: TOKEN }) + widget({ hidden: true }));
   await page.goto(ORIGIN);
   assert.deepEqual(await page.evaluate(challengeState), { present: true, solved: true });
+});
+
+test('the accessibility tree locates a moved closed-shadow checkbox without injecting scripts', async t => {
+  const page = await fixture(t, url => url.hostname === 'challenges.cloudflare.com' ? closedShadowFrame
+    : `${widget({ frame: true })}<script>addEventListener('message', event => {
+        if(event.origin === 'https://challenges.cloudflare.com' && event.data === 'verified')
+          document.querySelector('input[name="cf-turnstile-response"]').value = '${TOKEN}';
+      });</script>`, { observe: false });
+  await page.goto(ORIGIN);
+  const frame = page.frames().find(frame => frame.url().includes('challenges.cloudflare.com'));
+  assert.equal(await frame.evaluate(() => window.__turnstile_data), undefined);
+  assert.equal(await clickChallenge(page), false);
+  await frame.evaluate(() => { window.showCheckbox(); window.moveCheckbox(); });
+  await solveChallenge(page, page, 3000);
+  assert.equal((await page.evaluate(challengeState)).solved, true);
+  assert.equal(await clickChallenge(page), false);
 });
 
 test('a shadow root attached after polling is still discoverable', async t => {

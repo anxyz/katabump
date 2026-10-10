@@ -8,7 +8,7 @@ const { launch } = require('../lib/launch');
 const { challengeState, clickChallenge } = require('../lib/challenge');
 
 async function main() {
-  const mode = process.argv[2] === 'warp' ? 'warp' : 'direct';
+  const mode = ['direct', 'warp', 'native', 'native-dom'].includes(process.argv[2]) ? process.argv[2] : 'direct';
   const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'katabump-probe-'));
   const directory = path.resolve('.diagnostics');
   const codes = new Set(), network = new Set();
@@ -16,9 +16,11 @@ async function main() {
   let session, page;
   await fs.mkdir(directory, { recursive: true });
   try {
-    session = await launch(profile, mode === 'warp' ? { server: 'socks5://127.0.0.1:40000' } : undefined);
+    session = await launch(profile, mode === 'warp' ? { server: 'socks5://127.0.0.1:40000' } : undefined, {
+      stealth: !mode.startsWith('native'), observeChallenge: mode !== 'native-dom',
+    });
     page = session.pages()[0] || await session.newPage();
-    await page.context().addInitScript(() => {
+    if (mode !== 'native-dom') await page.context().addInitScript(() => {
       const roots = [];
       const original = Element.prototype.attachShadow;
       Element.prototype.attachShadow = function (init) {
@@ -45,6 +47,10 @@ async function main() {
     });
     const response = await page.goto('https://dashboard.katabump.com/auth/login', { waitUntil: 'domcontentloaded' });
     result.httpStatus = response.status();
+    result.browserVersion = page.context().browser().version();
+    result.environment = await page.evaluate(() => ({
+      userAgent: navigator.userAgent, platform: navigator.platform, webdriver: navigator.webdriver,
+    }));
     await page.locator('input[type="email"]').waitFor({ state: 'visible' });
     const deadline = Date.now() + 45000;
     const clicked = new WeakMap();
@@ -58,6 +64,15 @@ async function main() {
     for (const frame of page.frames()) {
       const host = new URL(frame.url()).hostname;
       if (!host.endsWith('.cloudflare.com')) continue;
+      if (mode === 'native-dom') {
+        const client = await page.context().newCDPSession(frame);
+        try {
+          const { nodes } = await client.send('Accessibility.getFullAXTree');
+          result.frames.push({ host, text: [...new Set(nodes.filter(node => !node.ignored && node.name?.value)
+            .map(node => node.name.value))].slice(0, 20) });
+        } finally { await client.detach().catch(() => {}); }
+        continue;
+      }
       const details = await frame.evaluate(() => {
         const roots = [document, ...(window.__probeRoots || [])];
         const checkboxes = roots.flatMap(root => [...root.querySelectorAll('input[type="checkbox"],[role="checkbox"]')])

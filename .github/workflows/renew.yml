@@ -13,6 +13,10 @@ on:
         description: 仅诊断验证码和网络，不读取账号或执行续期
         type: boolean
         default: false
+      diagnose_warp:
+        description: 诊断时额外对比 WARP 网络
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -107,7 +111,12 @@ jobs:
           npx playwright install --with-deps chromium > /dev/null 2>&1
       - name: 诊断直连网络
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" node scripts/diagnose-turnstile.js direct
+      - name: 诊断无伪装浏览器
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" node scripts/diagnose-turnstile.js native
+      - name: 诊断无注入浏览器
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" node scripts/diagnose-turnstile.js native-dom
       - name: 启动 WARP 代理
+        if: inputs.diagnose_warp == true
         id: warp
         continue-on-error: true
         run: bash scripts/setup-warp.sh
@@ -119,4 +128,5 @@ jobs:
         with:
           name: turnstile-diagnostics
           path: .diagnostics/
+          include-hidden-files: true
           retention-days: 3
